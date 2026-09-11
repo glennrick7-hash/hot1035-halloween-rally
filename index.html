@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+>
+
+<title>
+HOT 103.5 FM Halloween Car Rally
+</title>
+
+
+<style>
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  background: #111;
+  color: white;
+  text-align: center;
+}
+
+.container {
+  max-width: 500px;
+  margin: auto;
+}
+
+.card {
+  background: white;
+  color: #222;
+  padding: 25px;
+  border-radius: 15px;
+  margin-top: 20px;
+}
+
+h1 {
+  font-size: 26px;
+}
+
+.location {
+  font-size: 18px;
+  margin-bottom: 25px;
+}
+
+input {
+  width: 90%;
+  padding: 16px;
+  margin-top: 10px;
+  font-size: 20px;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  text-align: center;
+}
+
+button {
+  width: 100%;
+  padding: 16px;
+  margin-top: 15px;
+  font-size: 18px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#result {
+  margin-top: 20px;
+  font-size: 18px;
+}
+
+.success {
+  padding: 15px;
+  font-weight: bold;
+}
+
+.error {
+  padding: 15px;
+  font-weight: bold;
+}
+
+.hidden {
+  display: none;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+<div class="container">
+
+  <h1>
+    HOT 103.5 FM<br>
+    Halloween Car Rally
+  </h1>
+
+
+  <div class="card">
+
+    <h2 id="hotSpotName">
+      Loading HOT Spot...
+    </h2>
+
+    <div
+      id="location"
+      class="location">
+    </div>
+
+
+    <div id="loginSection">
+
+      <p>
+        Organizer Access
+      </p>
+
+      <input
+        id="pin"
+        type="password"
+        inputmode="numeric"
+        placeholder="Organizer PIN"
+      >
+
+      <button onclick="loginOrganizer()">
+        OPEN HOT SPOT
+      </button>
+
+    </div>
+
+
+    <div
+      id="checkinSection"
+      class="hidden"
+    >
+
+      <p>
+        Enter the team's registration reference.
+      </p>
+
+      <input
+        id="reference"
+        placeholder="HOTCR-0001"
+        autocomplete="off"
+      >
+
+      <button onclick="findTeam()">
+        FIND TEAM
+      </button>
+
+    </div>
+
+
+    <div id="result"></div>
+
+  </div>
+
+</div>
+
+
+
+<script>
+
+
+// -----------------------------------
+// CLOUDFLARE WORKER
+// -----------------------------------
+
+const API_URL =
+  "PASTE_YOUR_CLOUDFLARE_WORKER_URL_HERE";
+
+
+// -----------------------------------
+// HOT SPOT FROM URL
+// -----------------------------------
+
+const params =
+  new URLSearchParams(
+    window.location.search
+  );
+
+const HOT_SPOT_ID =
+  params.get("hs") || "";
+
+
+let organizerPin = "";
+let currentReference = "";
+
+
+// -----------------------------------
+// API REQUEST
+// -----------------------------------
+
+async function apiRequest(data) {
+
+  const response =
+    await fetch(
+      API_URL,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body:
+          JSON.stringify(data)
+      }
+    );
+
+  return await response.json();
+}
+
+
+// -----------------------------------
+// INITIALIZE
+// -----------------------------------
+
+async function loadHotSpot() {
+
+  if (!HOT_SPOT_ID) {
+
+    showError(
+      "No HOT Spot specified."
+    );
+
+    return;
+  }
+
+
+  try {
+
+    const data =
+      await apiRequest({
+        action:
+          "hotspotInfo",
+
+        hotSpotId:
+          HOT_SPOT_ID
+      });
+
+
+    if (!data.valid) {
+
+      showError(
+        data.message ||
+        "Invalid HOT Spot."
+      );
+
+      return;
+    }
+
+
+    document
+      .getElementById(
+        "hotSpotName"
+      )
+      .textContent =
+        data.name;
+
+
+    document
+      .getElementById(
+        "location"
+      )
+      .textContent =
+        data.location;
+
+
+  } catch (error) {
+
+    showError(
+      "Unable to connect to the system."
+    );
+  }
+}
+
+
+// -----------------------------------
+// LOGIN
+// -----------------------------------
+
+async function loginOrganizer() {
+
+  const pin =
+    document
+      .getElementById("pin")
+      .value
+      .trim();
+
+
+  if (!pin) {
+
+    showError(
+      "Please enter the organizer PIN."
+    );
+
+    return;
+  }
+
+
+  showMessage(
+    "Checking access..."
+  );
+
+
+  try {
+
+    const data =
+      await apiRequest({
+        action: "login",
+        hotSpotId:
+          HOT_SPOT_ID,
+        pin: pin
+      });
+
+
+    if (!data.success) {
+
+      showError(
+        data.message
+      );
+
+      return;
+    }
+
+
+    organizerPin = pin;
+
+
+    document
+      .getElementById(
+        "loginSection"
+      )
+      .classList
+      .add("hidden");
+
+
+    document
+      .getElementById(
+        "checkinSection"
+      )
+      .classList
+      .remove("hidden");
+
+
+    showMessage(
+      "Organizer access granted."
+    );
+
+
+  } catch (error) {
+
+    showError(
+      "Unable to connect to the system."
+    );
+  }
+}
+
+
+// -----------------------------------
+// FIND TEAM
+// -----------------------------------
+
+async function findTeam() {
+
+  const reference =
+    document
+      .getElementById(
+        "reference"
+      )
+      .value
+      .trim()
+      .toUpperCase();
+
+
+  if (!reference) {
+
+    showError(
+      "Please enter the team registration reference."
+    );
+
+    return;
+  }
+
+
+  showMessage(
+    "Searching..."
+  );
+
+
+  try {
+
+    const data =
+      await apiRequest({
+        action: "findTeam",
+        hotSpotId:
+          HOT_SPOT_ID,
+        pin:
+          organizerPin,
+        reference:
+          reference
+      });
+
+
+    if (!data.success) {
+
+      showError(
+        data.message
+      );
+
+      return;
+    }
+
+
+    if (
+      data.alreadyCheckedIn
+    ) {
+
+      showError(
+        data.teamName +
+        " has already checked in at this HOT Spot."
+      );
+
+      return;
+    }
+
+
+    currentReference =
+      data.reference;
+
+
+    document
+      .getElementById(
+        "result"
+      )
+      .innerHTML = `
+
+        <hr>
+
+        <h3>
+          ${escapeHtml(
+            data.teamName
+          )}
+        </h3>
+
+        <p>
+          Reference:
+          <strong>
+            ${escapeHtml(
+              data.reference
+            )}
+          </strong>
+        </p>
+
+        <p>
+          Captain:
+          <strong>
+            ${escapeHtml(
+              data.captain
+            )}
+          </strong>
+        </p>
+
+        <p>
+          License Plate:
+          <strong>
+            ${escapeHtml(
+              data.licensePlate
+            )}
+          </strong>
+        </p>
+
+        <p>
+          Registration:
+          <strong>
+            ${escapeHtml(
+              data.registrationStatus
+            )}
+          </strong>
+        </p>
+
+        <p>
+          Payment:
+          <strong>
+            ${escapeHtml(
+              data.paymentStatus
+            )}
+          </strong>
+        </p>
+
+
+        <button
+          onclick="confirmCheckIn()">
+
+          CHECK IN TEAM
+
+        </button>
+      `;
+
+
+  } catch (error) {
+
+    showError(
+      "Unable to connect to the system."
+    );
+  }
+}
+
+
+// -----------------------------------
+// CHECK IN
+// -----------------------------------
+
+async function confirmCheckIn() {
+
+  showMessage(
+    "Recording check-in..."
+  );
+
+
+  try {
+
+    const data =
+      await apiRequest({
+        action: "checkIn",
+        hotSpotId:
+          HOT_SPOT_ID,
+        pin:
+          organizerPin,
+        reference:
+          currentReference
+      });
+
+
+    if (!data.success) {
+
+      showError(
+        data.message
+      );
+
+      return;
+    }
+
+
+    document
+      .getElementById(
+        "result"
+      )
+      .innerHTML = `
+
+        <div class="success">
+
+          <h2>
+            ✓ CHECK-IN SUCCESSFUL
+          </h2>
+
+          <p>
+            <strong>
+              ${escapeHtml(
+                data.teamName
+              )}
+            </strong>
+          </p>
+
+          <p>
+            ${escapeHtml(
+              data.hotSpotName
+            )}
+          </p>
+
+          <p>
+            ${escapeHtml(
+              data.location
+            )}
+          </p>
+
+          <button
+            onclick="resetCheckIn()">
+
+            CHECK IN NEXT TEAM
+
+          </button>
+
+        </div>
+      `;
+
+
+  } catch (error) {
+
+    showError(
+      "Unable to record check-in."
+    );
+  }
+}
+
+
+// -----------------------------------
+// RESET
+// -----------------------------------
+
+function resetCheckIn() {
+
+  currentReference = "";
+
+
+  document
+    .getElementById(
+      "reference"
+    )
+    .value = "";
+
+
+  document
+    .getElementById(
+      "result"
+    )
+    .innerHTML = "";
+
+
+  document
+    .getElementById(
+      "reference"
+    )
+    .focus();
+}
+
+
+// -----------------------------------
+// MESSAGES
+// -----------------------------------
+
+function showMessage(message) {
+
+  document
+    .getElementById(
+      "result"
+    )
+    .textContent =
+      message;
+}
+
+
+function showError(message) {
+
+  document
+    .getElementById(
+      "result"
+    )
+    .innerHTML =
+      '<div class="error">' +
+      escapeHtml(message) +
+      '</div>';
+}
+
+
+// -----------------------------------
+// SECURITY
+// -----------------------------------
+
+function escapeHtml(value) {
+
+  return String(
+    value ?? ""
+  )
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#039;");
+}
+
+
+// Start
+loadHotSpot();
+
+
+</script>
+
+</body>
+</html>
